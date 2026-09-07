@@ -80,3 +80,79 @@
     addEventListener('resize',rebuild);
   }
 })();
+
+/* ======================================================================
+   Immersive WebGL hero backdrop (Three.js) — bright, airy floating shapes
+   ====================================================================== */
+(function(){
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var canvas = document.getElementById('webgl');
+  if(!canvas || reduced || typeof THREE==='undefined') return;
+  var renderer;
+  try{ renderer = new THREE.WebGLRenderer({ canvas:canvas, antialias:true, alpha:true }); }
+  catch(e){ canvas.style.display='none'; return; }
+  function size(){ return { w: canvas.clientWidth||innerWidth, h: canvas.clientHeight||Math.round(innerHeight*0.98) }; }
+  var s = size();
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(s.w, s.h, false);
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(55, s.w/s.h, 0.1, 100); camera.position.z = 20;
+  scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+  var key = new THREE.DirectionalLight(0xffffff, 0.6); key.position.set(4,6,8); scene.add(key);
+  var COLORS = [0x82a0ff, 0xf0befa, 0xff5a4d, 0xc6f24e, 0xffd23f];
+  var geos = [ new THREE.IcosahedronGeometry(1.5,0), new THREE.TorusGeometry(1.2,0.42,10,20), new THREE.DodecahedronGeometry(1.5,0), new THREE.OctahedronGeometry(1.6,0), new THREE.TorusKnotGeometry(0.9,0.32,60,8) ];
+  var shapes = [];
+  for(var i=0;i<26;i++){
+    var col = COLORS[i%COLORS.length];
+    var g = geos[i%geos.length];
+    var solid = Math.random()<0.5;
+    var mat = solid ? new THREE.MeshStandardMaterial({ color:col, roughness:.5, metalness:.1, flatShading:true })
+                    : new THREE.MeshBasicMaterial({ color:col, wireframe:true, transparent:true, opacity:.7 });
+    var m = new THREE.Mesh(g, mat);
+    var sc = 0.5 + Math.random()*1.4; m.scale.setScalar(sc);
+    m.position.set((Math.random()-.5)*34, (Math.random()-.5)*22, (Math.random()-.5)*16 - 4);
+    m.userData = { rx:(Math.random()-.5)*0.006, ry:(Math.random()-.5)*0.008, fy:0.2+Math.random()*0.5, ph:Math.random()*6.28, baseY:m.position.y };
+    scene.add(m); shapes.push(m);
+  }
+  var mx=0, my=0, tmx=0, tmy=0;
+  addEventListener('mousemove', function(e){ tmx=(e.clientX/innerWidth-0.5); tmy=(e.clientY/innerHeight-0.5); });
+  addEventListener('resize', function(){ var z=size(); camera.aspect=z.w/z.h; camera.updateProjectionMatrix(); renderer.setSize(z.w,z.h,false); });
+  var t=0;
+  (function loop(){ requestAnimationFrame(loop); t+=0.016;
+    mx += (tmx-mx)*0.04; my += (tmy-my)*0.04;
+    camera.position.x = mx*6; camera.position.y = -my*4; camera.lookAt(0,0,0);
+    for(var i=0;i<shapes.length;i++){ var m=shapes[i], u=m.userData; m.rotation.x+=u.rx; m.rotation.y+=u.ry; m.position.y = u.baseY + Math.sin(t*u.fy + u.ph)*0.6; }
+    renderer.render(scene,camera);
+  })();
+})();
+
+/* ======================================================================
+   Live from GitHub — real public stats, client-side (no key, CORS-ok)
+   ====================================================================== */
+(function(){
+  var el = document.getElementById('gh'); if(!el) return;
+  var USER = 'VyshakhNaiR';
+  var LANG_COLORS = { Python:'#82a0ff', HTML:'#ff5a4d', JavaScript:'#ffd23f', TypeScript:'#82a0ff', Shell:'#c6f24e', CSS:'#f0befa', Kotlin:'#a855f7', Other:'#5c564a' };
+  function esc(n){ return String(n); }
+  Promise.all([
+    fetch('https://api.github.com/users/'+USER).then(function(r){ return r.ok?r.json():Promise.reject(); }),
+    fetch('https://api.github.com/users/'+USER+'/repos?per_page=100&sort=updated').then(function(r){ return r.ok?r.json():Promise.reject(); })
+  ]).then(function(res){
+    var u=res[0], repos=res[1].filter(function(r){ return !r.fork; });
+    var stars = repos.reduce(function(a,r){ return a+(r.stargazers_count||0); },0);
+    var year = new Date(u.created_at).getFullYear();
+    var langs={}; repos.forEach(function(r){ if(r.language){ langs[r.language]=(langs[r.language]||0)+1; } });
+    var total = Object.values(langs).reduce(function(a,b){ return a+b; },0)||1;
+    var entries = Object.entries(langs).sort(function(a,b){ return b[1]-a[1]; });
+    var bar = entries.map(function(e){ var c=LANG_COLORS[e[0]]||LANG_COLORS.Other; return '<i style="width:'+(e[1]/total*100)+'%;background:'+c+'"></i>'; }).join('');
+    var key = entries.map(function(e){ var c=LANG_COLORS[e[0]]||LANG_COLORS.Other; return '<span><i style="background:'+c+'"></i>'+e[0]+'</span>'; }).join('');
+    el.innerHTML =
+      '<div class="gh__cell"><div class="gh__n">'+esc(u.public_repos)+'</div><div class="gh__l gh__live">public repos</div></div>'+
+      '<div class="gh__cell"><div class="gh__n">'+esc(stars)+'</div><div class="gh__l">stars earned</div></div>'+
+      '<div class="gh__cell"><div class="gh__n">'+esc(u.followers)+'</div><div class="gh__l">followers</div></div>'+
+      '<div class="gh__cell"><div class="gh__n">’'+String(year).slice(2)+'</div><div class="gh__l">on github since</div></div>'+
+      '<div class="gh__langs"><div class="gh__bar">'+bar+'</div><div class="gh__key">'+key+'<span style="margin-left:auto;color:var(--coral)">@'+USER+' ↗</span></div></div>';
+    el.parentElement.querySelector('.gh__load') && (function(){})();
+  }).catch(function(){
+    el.innerHTML = '<div class="gh__load">Live GitHub stats are rate-limited right now &mdash; find me at <a href="https://github.com/'+USER+'" target="_blank" rel="noopener" style="color:var(--coral)">github.com/'+USER+'</a>.</div>';
+  });
+})();
